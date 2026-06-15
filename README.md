@@ -35,7 +35,7 @@
 #### Build from Source
 
 ```bash
-git clone https://github.com/whichking9/SmartRemind.git
+git clone https://github.com/W6iCH/SmartRemind.git
 cd SmartRemind
 swift build -c release
 open .build/arm64-apple-macosx/release/SmartRemind.app
@@ -135,7 +135,7 @@ MIT © 2026 Caihou Wang (which)
 #### 从源码构建
 
 ```bash
-git clone https://github.com/whichking9/SmartRemind.git
+git clone https://github.com/W6iCH/SmartRemind.git
 cd SmartRemind
 swift build -c release
 open .build/arm64-apple-macosx/release/SmartRemind.app

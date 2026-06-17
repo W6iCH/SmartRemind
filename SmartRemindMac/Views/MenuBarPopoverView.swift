@@ -159,13 +159,20 @@ struct MenuBarPopoverView: View {
     // MARK: - Bottom Bar
 
     private var bottomBar: some View {
-        HStack {
+        HStack(spacing: 12) {
             Button(action: {
                 NotificationCenter.default.post(name: .toggleFloatingPanel, object: nil)
             }) {
                 Label("悬浮窗", systemImage: "rectangle.on.rectangle").font(.caption)
             }
             .buttonStyle(.plain).foregroundColor(.accentColor)
+
+            Button(action: {
+                NotificationCenter.default.post(name: .toggleWorkMode, object: nil)
+            }) {
+                Label("工作模式", systemImage: "target").font(.caption)
+            }
+            .buttonStyle(.plain).foregroundColor(.orange)
 
             Spacer()
 
@@ -175,8 +182,6 @@ struct MenuBarPopoverView: View {
                 Label("设置", systemImage: "gear").font(.caption)
             }
             .buttonStyle(.plain).foregroundColor(.secondary)
-
-            Spacer().frame(width: 8)
 
             Button("退出") { NSApplication.shared.terminate(nil) }
                 .font(.caption).buttonStyle(.plain).foregroundColor(.secondary)
@@ -204,4 +209,5 @@ extension Notification.Name {
     static let openSettings = Notification.Name("openSettings")
     static let remindersChanged = Notification.Name("remindersChanged")
     static let openMainWindow = Notification.Name("openMainWindow")
+    static let toggleWorkMode = Notification.Name("toggleWorkMode")
 }

@@ -2,11 +2,17 @@
 
 # Swift / Xcode
 .build/
+*.xcodeproj/
 *.xcworkspace
 xcuserdata/
 DerivedData/
 *.xcuserstate
 *.xcscmblueprint
+project.yml
+
+# Build artifacts
+build/
+*.dmg
 
 # macOS
 .DS_Store

@@ -76,6 +76,39 @@ final class AppearanceConfig: ObservableObject {
     // MARK: - AI
     @AppStorage("ai.multiMode") var aiMultiMode: Bool = false
 
+    // MARK: - 工作模式
+    @AppStorage("work.width") var workWidth: Double = 300
+    @AppStorage("work.height") var workHeight: Double = 480
+    @AppStorage("work.fontSize") var workFontSize: Double = 13
+    @AppStorage("work.subFontSize") var workSubFontSize: Double = 10
+    @AppStorage("work.cornerRadius") var workCornerRadius: Double = 14
+    @AppStorage("work.bgOpacity") var workBgOpacity: Double = 0.92
+    @AppStorage("work.bgColorHex") var workBgColorHex: String = "#1A1A2E"
+    @AppStorage("work.textColorHex") var workTextColorHex: String = "#EAEAEA"
+    @AppStorage("work.accentColorHex") var workAccentColorHex: String = "#00D2FF"
+    @AppStorage("work.currentBgColorHex") var workCurrentBgColorHex: String = "#0F3460"   // 当前任务高亮背景
+    @AppStorage("work.currentTextColorHex") var workCurrentTextColorHex: String = "#00D2FF" // 当前任务文字
+    @AppStorage("work.doneBgColorHex") var workDoneBgColorHex: String = "#16213E"          // 已完成背景
+    @AppStorage("work.doneTextColorHex") var workDoneTextColorHex: String = "#4A4A6A"      // 已完成文字
+    @AppStorage("work.pendingBgColorHex") var workPendingBgColorHex: String = "#1A1A2E"    // 待完成背景
+    @AppStorage("work.rowHeight") var workRowHeight: Double = 44
+    @AppStorage("work.rowSpacing") var workRowSpacing: Double = 4
+    @AppStorage("work.showIndex") var workShowIndex: Bool = true       // 显示序号
+    @AppStorage("work.showSubtitle") var workShowSubtitle: Bool = true  // 副标题行
+    @AppStorage("work.resizable") var workResizable: Bool = true
+    @AppStorage("work.headerText") var workHeaderText: String = "🎯 工作模式"  // 顶栏标题
+    @AppStorage("work.headerFontSize") var workHeaderFontSize: Double = 14
+
+    // Computed colors for work mode
+    var workBgColor: Color { color(from: workBgColorHex) }
+    var workTextColor: Color { color(from: workTextColorHex) }
+    var workAccentColor: Color { color(from: workAccentColorHex) }
+    var workCurrentBgColor: Color { color(from: workCurrentBgColorHex) }
+    var workCurrentTextColor: Color { color(from: workCurrentTextColorHex) }
+    var workDoneBgColor: Color { color(from: workDoneBgColorHex) }
+    var workDoneTextColor: Color { color(from: workDoneTextColorHex) }
+    var workPendingBgColor: Color { color(from: workPendingBgColorHex) }
+
     private init() {}
 
     // MARK: - Computed Colors
@@ -186,6 +219,29 @@ struct SettingsDraft {
     var showListName: Bool
     var aiMultiMode: Bool
 
+    // Work mode
+    var workWidth: Double
+    var workHeight: Double
+    var workFontSize: Double
+    var workSubFontSize: Double
+    var workCornerRadius: Double
+    var workBgOpacity: Double
+    var workBgColorHex: String
+    var workTextColorHex: String
+    var workAccentColorHex: String
+    var workCurrentBgColorHex: String
+    var workCurrentTextColorHex: String
+    var workDoneBgColorHex: String
+    var workDoneTextColorHex: String
+    var workPendingBgColorHex: String
+    var workRowHeight: Double
+    var workRowSpacing: Double
+    var workShowIndex: Bool
+    var workShowSubtitle: Bool
+    var workResizable: Bool
+    var workHeaderText: String
+    var workHeaderFontSize: Double
+
     init(from config: AppearanceConfig) {
         floatWidth = config.floatWidth
         floatHeight = config.floatHeight
@@ -229,6 +285,28 @@ struct SettingsDraft {
         showDueDate = config.showDueDate
         showListName = config.showListName
         aiMultiMode = config.aiMultiMode
+        // Work mode
+        workWidth = config.workWidth
+        workHeight = config.workHeight
+        workFontSize = config.workFontSize
+        workSubFontSize = config.workSubFontSize
+        workCornerRadius = config.workCornerRadius
+        workBgOpacity = config.workBgOpacity
+        workBgColorHex = config.workBgColorHex
+        workTextColorHex = config.workTextColorHex
+        workAccentColorHex = config.workAccentColorHex
+        workCurrentBgColorHex = config.workCurrentBgColorHex
+        workCurrentTextColorHex = config.workCurrentTextColorHex
+        workDoneBgColorHex = config.workDoneBgColorHex
+        workDoneTextColorHex = config.workDoneTextColorHex
+        workPendingBgColorHex = config.workPendingBgColorHex
+        workRowHeight = config.workRowHeight
+        workRowSpacing = config.workRowSpacing
+        workShowIndex = config.workShowIndex
+        workShowSubtitle = config.workShowSubtitle
+        workResizable = config.workResizable
+        workHeaderText = config.workHeaderText
+        workHeaderFontSize = config.workHeaderFontSize
     }
 
     func apply(to config: AppearanceConfig) {
@@ -274,5 +352,27 @@ struct SettingsDraft {
         config.showDueDate = showDueDate
         config.showListName = showListName
         config.aiMultiMode = aiMultiMode
+        // Work mode
+        config.workWidth = workWidth
+        config.workHeight = workHeight
+        config.workFontSize = workFontSize
+        config.workSubFontSize = workSubFontSize
+        config.workCornerRadius = workCornerRadius
+        config.workBgOpacity = workBgOpacity
+        config.workBgColorHex = workBgColorHex
+        config.workTextColorHex = workTextColorHex
+        config.workAccentColorHex = workAccentColorHex
+        config.workCurrentBgColorHex = workCurrentBgColorHex
+        config.workCurrentTextColorHex = workCurrentTextColorHex
+        config.workDoneBgColorHex = workDoneBgColorHex
+        config.workDoneTextColorHex = workDoneTextColorHex
+        config.workPendingBgColorHex = workPendingBgColorHex
+        config.workRowHeight = workRowHeight
+        config.workRowSpacing = workRowSpacing
+        config.workShowIndex = workShowIndex
+        config.workShowSubtitle = workShowSubtitle
+        config.workResizable = workResizable
+        config.workHeaderText = workHeaderText
+        config.workHeaderFontSize = workHeaderFontSize
     }
 }

@@ -19,7 +19,7 @@ final class ReminderManager: ObservableObject {
 
     // MARK: - Private
 
-    private let eventStore = EKEventStore()
+    let eventStore = EKEventStore()
 
     private init() {
         // 检查当前授权状态

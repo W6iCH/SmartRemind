@@ -1,14 +1,17 @@
 import SwiftUI
 import AppKit
 
-// MARK: - Main Window (Reminders + Settings)
+// MARK: - Main Window (3-Tab: 提醒 / 统计 / 设置)
 
 struct MainWindowView: View {
     @EnvironmentObject var reminderManager: ReminderManager
     @EnvironmentObject var config: AppearanceConfig
     @EnvironmentObject var llmService: LLMService
 
-    @State private var selectedTab: Tab = .reminders
+    // Top-level tab
+    @State private var selectedTab: TopTab = .reminders
+
+    // Reminder tab state
     @State private var selectedList: ListFilter = .all
     @State private var searchText: String = ""
     @State private var editingItem: ReminderItem?
@@ -16,18 +19,67 @@ struct MainWindowView: View {
     @State private var showCompleted = false
     @State private var aiInputText: String = ""
 
-    enum Tab: String, CaseIterable { case reminders = "提醒", settings = "设置" }
+    // Statistics tab state
+    @State private var selectedStatPage: StatPage = .overview
+
+    // Settings tab state
+    @State private var selectedSettingsCategory: SettingsCategory = .floatAppearance
+
+    enum TopTab: String, CaseIterable { case reminders = "提醒", statistics = "统计", settings = "设置" }
     enum ListFilter: Hashable { case all, flagged, list(String) }
+    enum StatPage: String, CaseIterable, Hashable { case overview = "概览", allData = "所有数据", log = "Log" }
+    enum SettingsCategory: String, CaseIterable, Hashable {
+        case floatAppearance = "悬浮窗外观"
+        case floatColor = "悬浮窗颜色"
+        case floatLayout = "悬浮窗布局"
+        case floatAnimation = "悬浮窗动画"
+        case floatWidget = "悬浮窗插件"
+        case floatBehavior = "悬浮窗行为"
+        case workSize = "工作模式尺寸"
+        case workColor = "工作模式颜色"
+        case mainList = "主列表"
+        case statusBar = "状态栏"
+        case aiModel = "AI 模型"
+        case about = "关于"
+
+        var icon: String {
+            switch self {
+            case .floatAppearance: return "rectangle.inset.filled"
+            case .floatColor: return "paintpalette"
+            case .floatLayout: return "rectangle.split.3x1"
+            case .floatAnimation: return "wand.and.stars"
+            case .floatWidget: return "widget.small"
+            case .floatBehavior: return "gearshape"
+            case .workSize: return "arrow.up.left.and.arrow.down.right"
+            case .workColor: return "paintpalette.fill"
+            case .mainList: return "list.bullet"
+            case .statusBar: return "menubar.rectangle"
+            case .aiModel: return "brain"
+            case .about: return "info.circle"
+            }
+        }
+
+        var isFloatCategory: Bool {
+            switch self {
+            case .floatAppearance, .floatColor, .floatLayout, .floatAnimation, .floatWidget, .floatBehavior: return true
+            default: return false
+            }
+        }
+
+        var isWorkCategory: Bool {
+            switch self {
+            case .workSize, .workColor: return true
+            default: return false
+            }
+        }
+    }
 
     var body: some View {
         NavigationSplitView {
             sidebar
                 .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 260)
         } detail: {
-            switch selectedTab {
-            case .reminders: reminderDetail
-            case .settings: SettingsPanelView()
-            }
+            detailContent
         }
         .frame(minWidth: 860, minHeight: 600)
         .sheet(isPresented: $showNewReminder) { NewReminderSheet().environmentObject(reminderManager) }
@@ -42,6 +94,25 @@ struct MainWindowView: View {
     // MARK: - Sidebar
 
     private var sidebar: some View {
+        Group {
+            switch selectedTab {
+            case .reminders: remindersSidebar
+            case .statistics: statisticsSidebar
+            case .settings: settingsSidebar
+            }
+        }
+        .listStyle(.sidebar)
+        .safeAreaInset(edge: .top) {
+            Picker("", selection: $selectedTab) {
+                ForEach(TopTab.allCases, id: \.self) { t in Text(t.rawValue).tag(t) }
+            }
+            .pickerStyle(.segmented).labelsHidden().padding(.horizontal, 8).padding(.top, 8)
+        }
+    }
+
+    // MARK: Reminders Sidebar
+
+    private var remindersSidebar: some View {
         List(selection: $selectedList) {
             Section("提醒事项") {
                 Label("全部", systemImage: "tray.full").tag(ListFilter.all)
@@ -59,13 +130,6 @@ struct MainWindowView: View {
                 }
             }
         }
-        .listStyle(.sidebar)
-        .safeAreaInset(edge: .top) {
-            Picker("", selection: $selectedTab) {
-                ForEach(Tab.allCases, id: \.self) { t in Text(t.rawValue).tag(t) }
-            }
-            .pickerStyle(.segmented).labelsHidden().padding(.horizontal, 8).padding(.top, 8)
-        }
         .safeAreaInset(edge: .bottom) {
             VStack(spacing: 0) {
                 Divider()
@@ -78,6 +142,54 @@ struct MainWindowView: View {
                 }
                 .padding(.horizontal, 10).padding(.vertical, 6)
             }.background(.regularMaterial)
+        }
+    }
+
+    // MARK: Statistics Sidebar
+
+    private var statisticsSidebar: some View {
+        List(selection: $selectedStatPage) {
+            Section("统计") {
+                Label("概览", systemImage: "chart.bar").tag(StatPage.overview)
+                Label("所有数据", systemImage: "tablecells").tag(StatPage.allData)
+                Label("Log", systemImage: "doc.text").tag(StatPage.log)
+            }
+        }
+    }
+
+    // MARK: Settings Sidebar
+
+    private var settingsSidebar: some View {
+        List(selection: $selectedSettingsCategory) {
+            Section("悬浮窗") {
+                ForEach([SettingsCategory.floatAppearance, .floatColor, .floatLayout, .floatAnimation, .floatWidget, .floatBehavior], id: \.self) { cat in
+                    Label(cat.rawValue, systemImage: cat.icon).tag(cat)
+                }
+            }
+            Section("工作模式") {
+                ForEach([SettingsCategory.workSize, .workColor], id: \.self) { cat in
+                    Label(cat.rawValue, systemImage: cat.icon).tag(cat)
+                }
+            }
+            Section("通用") {
+                ForEach([SettingsCategory.mainList, .statusBar, .aiModel, .about], id: \.self) { cat in
+                    Label(cat.rawValue, systemImage: cat.icon).tag(cat)
+                }
+            }
+        }
+    }
+
+    // MARK: - Detail Content
+
+    @ViewBuilder
+    private var detailContent: some View {
+        switch selectedTab {
+        case .reminders:
+            reminderDetail
+        case .statistics:
+            StatisticsView(selectedPage: $selectedStatPage)
+        case .settings:
+            SettingsPanelView(selectedCategory: $selectedSettingsCategory)
         }
     }
 
@@ -216,11 +328,13 @@ struct MainWindowView: View {
     }
 }
 
-// MARK: - Settings Panel (with Draft + Live Preview)
+// MARK: - Settings Panel (with Draft + Live Preview + Category Selection)
 
 struct SettingsPanelView: View {
     @EnvironmentObject var config: AppearanceConfig
     @EnvironmentObject var llmService: LLMService
+
+    @Binding var selectedCategory: MainWindowView.SettingsCategory
 
     // Draft
     @State private var draft: SettingsDraft
@@ -232,14 +346,20 @@ struct SettingsPanelView: View {
     @State private var pBg = Color.white; @State private var pText = Color.white
     @State private var pAccent = Color.white; @State private var pFlag = Color.white
     @State private var pDueDate = Color.white; @State private var pWidget = Color.white
+    // Work mode color pickers
+    @State private var pWorkBg = Color.white; @State private var pWorkText = Color.white
+    @State private var pWorkAccent = Color.white; @State private var pWorkCurBg = Color.white
+    @State private var pWorkCurText = Color.white; @State private var pWorkDoneBg = Color.white
+    @State private var pWorkDoneText = Color.white; @State private var pWorkPendBg = Color.white
 
-    init() {
+    init(selectedCategory: Binding<MainWindowView.SettingsCategory>) {
+        _selectedCategory = selectedCategory
         _draft = State(initialValue: SettingsDraft(from: AppearanceConfig.shared))
     }
 
     var body: some View {
         HSplitView {
-            // Left: form
+            // Left: settings form for selected category
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     // Save bar
@@ -257,178 +377,7 @@ struct SettingsPanelView: View {
                     }
 
                     Form {
-                        // ── 外观 ──
-                        Section {
-                            sizeRow("宽度", v: $draft.floatWidth, range: 100...600) { hasChanges = true }
-                            sizeRow("高度", v: $draft.floatHeight, range: 36...400) { hasChanges = true }
-                            sizeRow("字号", v: $draft.floatFontSize, range: 8...28) { hasChanges = true }
-                            sizeRow("副标题字号", v: $draft.floatSubFontSize, range: 6...20) { hasChanges = true }
-                            sizeRow("圆角", v: $draft.floatCornerRadius, range: 0...30) { hasChanges = true }
-                            sizeDoubleRow("透明度", v: $draft.floatBgOpacity, range: 0.3...1.0, step: 0.05) { hasChanges = true }
-                        } header: { sectionHeader("外观尺寸") }
-
-                        Section {
-                            colorRow("背景色", draftHex: $draft.floatBgColorHex, picker: $pBg) { hasChanges = true }
-                            colorRow("文字色", draftHex: $draft.floatTextColorHex, picker: $pText) { hasChanges = true }
-                            colorRow("强调色", draftHex: $draft.floatAccentColorHex, picker: $pAccent) { hasChanges = true }
-                            colorRow("旗标色", draftHex: $draft.floatFlagColorHex, picker: $pFlag) { hasChanges = true }
-                            colorRow("日期色", draftHex: $draft.floatDueDateColorHex, picker: $pDueDate) { hasChanges = true }
-                        } header: { sectionHeader("颜色") }
-
-                        // ── 布局对齐 ──
-                        Section {
-                            Picker("水平对齐", selection: $draft.floatAlignH) {
-                                Text("左").tag("left"); Text("中").tag("center"); Text("右").tag("right")
-                            }.pickerStyle(.segmented).onChange(of: draft.floatAlignH) { _, _ in hasChanges = true }
-
-                            Picker("垂直对齐", selection: $draft.floatAlignV) {
-                                Text("上").tag("top"); Text("中").tag("center"); Text("下").tag("bottom")
-                            }.pickerStyle(.segmented).onChange(of: draft.floatAlignV) { _, _ in hasChanges = true }
-
-                            sizeRow("水平缩进", v: $draft.floatAlignPaddingH, range: 0...80) { hasChanges = true }
-                            sizeRow("垂直偏移", v: $draft.floatAlignPaddingV, range: 0...60) { hasChanges = true }
-                        } header: { sectionHeader("布局对齐") }
-
-                        // ── 布局字段 ──
-                        Section {
-                            FieldSelectorView(title: "标题行", value: $draft.floatLayoutTitleFields,
-                                options: ["flag","priority","title"], labels: ["旗标","优先级","标题"])
-                                .onChange(of: draft.floatLayoutTitleFields) { _, _ in hasChanges = true }
-                            FieldSelectorView(title: "副标题行", value: $draft.floatLayoutSubtitleFields,
-                                options: ["listName","dueDate","location","notes","tags"],
-                                labels: ["列表","日期","位置","备注","标签"])
-                                .onChange(of: draft.floatLayoutSubtitleFields) { _, _ in hasChanges = true }
-                            Picker("角标", selection: $draft.floatLayoutBadgeField) {
-                                Text("无").tag("none"); Text("优先级").tag("priority"); Text("旗标").tag("flag"); Text("标签").tag("tags")
-                            }.onChange(of: draft.floatLayoutBadgeField) { _, _ in hasChanges = true }
-                        } header: { sectionHeader("显示字段") }
-
-                        // ── 切换动画 ──
-                        Section {
-                            Picker("展示模式", selection: $draft.floatScrollMode) {
-                                Text("翻页切换").tag("page")
-                                Text("连续滚动").tag("continuousScroll")
-                            }.pickerStyle(.segmented)
-                            .onChange(of: draft.floatScrollMode) { _, _ in hasChanges = true }
-
-                            if draft.floatScrollMode == "page" {
-                                Picker("切换动画", selection: $draft.floatAnimMode) {
-                                    Text("淡入淡出").tag("fade")
-                                    Text("水平滑动").tag("horizontalSlide")
-                                    Text("垂直滑动").tag("verticalSlide")
-                                    Text("翻转").tag("flip")
-                                    Text("3D旋转").tag("rotate3D")
-                                }.onChange(of: draft.floatAnimMode) { _, _ in hasChanges = true }
-
-                                sizeDoubleRow("切换时长", v: $draft.floatAnimDuration, range: 0.1...2.0, step: 0.05) { hasChanges = true }
-
-                                Stepper("每页条数: \(draft.floatItemsPerPage)", value: $draft.floatItemsPerPage, in: 1...10)
-                                    .onChange(of: draft.floatItemsPerPage) { _, _ in hasChanges = true }
-
-                                sizeDoubleRow("切换间隔", v: $draft.floatScrollInterval, range: 1...30, step: 0.5) { hasChanges = true }
-                            } else {
-                                sizeRow("滚动速度(px/s)", v: $draft.floatAnimSpeed, range: 5...200) { hasChanges = true }
-                            }
-                        } header: { sectionHeader("展示与动画") }
-
-                        // ── 插件 ──
-                        Section {
-                            Toggle("启用插件", isOn: $draft.floatWidgetEnabled)
-                                .onChange(of: draft.floatWidgetEnabled) { _, _ in hasChanges = true }
-                            if draft.floatWidgetEnabled {
-                                Picker("位置", selection: $draft.floatWidgetPosition) {
-                                    Text("左上").tag("topLeft"); Text("右上").tag("topRight")
-                                    Text("左下").tag("bottomLeft"); Text("右下").tag("bottomRight")
-                                }.onChange(of: draft.floatWidgetPosition) { _, _ in hasChanges = true }
-                                Picker("内容", selection: $draft.floatWidgetContent) {
-                                    Text("剩余待办数").tag("remaining"); Text("当前时间").tag("time"); Text("日期").tag("date")
-                                }.onChange(of: draft.floatWidgetContent) { _, _ in hasChanges = true }
-                                sizeRow("字号", v: $draft.floatWidgetFontSize, range: 7...18) { hasChanges = true }
-                                sizeDoubleRow("透明度", v: $draft.floatWidgetOpacity, range: 0.2...1.0, step: 0.05) { hasChanges = true }
-                                colorRow("颜色", draftHex: $draft.floatWidgetColorHex, picker: $pWidget) { hasChanges = true }
-                            }
-                        } header: { sectionHeader("插件 Widget") }
-
-                        // ── 行为 ──
-                        Section {
-                            Toggle("悬停暂停轮播", isOn: $draft.floatPauseOnHover).onChange(of: draft.floatPauseOnHover) { _, _ in hasChanges = true }
-                            Toggle("允许拖拽调大小", isOn: $draft.floatResizable).onChange(of: draft.floatResizable) { _, _ in hasChanges = true }
-                            Toggle("显示 AI 输入", isOn: $draft.floatShowInput).onChange(of: draft.floatShowInput) { _, _ in hasChanges = true }
-                            Toggle("允许完成操作", isOn: $draft.floatAllowComplete).onChange(of: draft.floatAllowComplete) { _, _ in hasChanges = true }
-                            Picker("默认筛选", selection: $draft.floatFilterMode) {
-                                Text("全部").tag("all"); Text("仅旗标").tag("flagged"); Text("指定列表").tag("lists")
-                            }.onChange(of: draft.floatFilterMode) { _, _ in hasChanges = true }
-                        } header: { sectionHeader("行为") }
-
-                        // ── 状态栏 ──
-                        Section {
-                            Picker("图标", selection: $draft.statusBarIconName) {
-                                Text("checklist").tag("checklist")
-                                Text("checkmark.circle").tag("checkmark.circle")
-                                Text("list.bullet").tag("list.bullet")
-                                Text("square.grid.2x2").tag("square.grid.2x2")
-                                Text("bell.badge").tag("bell.badge")
-                            }.onChange(of: draft.statusBarIconName) { _, _ in hasChanges = true }
-                        } header: { sectionHeader("状态栏") }
-
-                        // ── 列表 ──
-                        Section {
-                            sizeRow("字号", v: $draft.listFontSize, range: 10...18) { hasChanges = true }
-                            Toggle("显示备注", isOn: $draft.showNotes).onChange(of: draft.showNotes) { _, _ in hasChanges = true }
-                            Toggle("显示位置", isOn: $draft.showLocation).onChange(of: draft.showLocation) { _, _ in hasChanges = true }
-                            Toggle("显示日期", isOn: $draft.showDueDate).onChange(of: draft.showDueDate) { _, _ in hasChanges = true }
-                            Toggle("显示列表名", isOn: $draft.showListName).onChange(of: draft.showListName) { _, _ in hasChanges = true }
-                        } header: { sectionHeader("主列表") }
-
-                        // ── AI ──
-                        Section {
-                            Toggle("多任务模式", isOn: $draft.aiMultiMode).onChange(of: draft.aiMultiMode) { _, _ in hasChanges = true }
-                        } header: { sectionHeader("AI 模型") }
-
-                        Section {
-                            ForEach(llmService.providers, id: \.id) { p in
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 1) {
-                                        Text(p.name).font(.system(size: 12, weight: .medium))
-                                        Text(p.modelName).font(.system(size: 10)).foregroundColor(.secondary)
-                                    }
-                                    Spacer()
-                                    if p.id == llmService.currentProvider.id {
-                                        Image(systemName: "checkmark.circle.fill").foregroundColor(.green).font(.caption)
-                                    }
-                                    Button("编辑") { editingProvider = p; showProviderEditor = true }
-                                        .font(.system(size: 10)).buttonStyle(.plain)
-                                    Button("删除") { llmService.removeProvider(p) }
-                                        .font(.system(size: 10)).buttonStyle(.plain).foregroundColor(.red)
-                                }.padding(.vertical, 1)
-                            }
-                            HStack {
-                                Button(action: {
-                                    editingProvider = LLMProviderConfig(id: UUID(), name: "", baseURL: "https://api.openai.com/v1/chat/completions", modelName: "gpt-4o-mini", apiKey: "")
-                                    showProviderEditor = true
-                                }) { Label("添加", systemImage: "plus").font(.caption) }.buttonStyle(.plain)
-                                Spacer()
-                                if llmService.isProcessing { ProgressView().scaleEffect(0.6) }
-                                Button("测试连接") { Task { do { _ = try await llmService.parseNaturalLanguage("test") } catch {} } }
-                                    .font(.caption).buttonStyle(.bordered).controlSize(.small)
-                            }
-                        } header: { sectionHeader("API 供应商") }
-                        .sheet(isPresented: $showProviderEditor) {
-                            if let p = editingProvider {
-                                ProviderEditSheet(provider: p) { u in
-                                    if llmService.providers.contains(where: { $0.id == u.id }) { llmService.updateProvider(u) }
-                                    else { llmService.addProvider(u) }
-                                }
-                            }
-                        }
-
-                        Section {
-                            HStack {
-                                Text("SmartRemind").font(.headline)
-                                Spacer()
-                                Text("v5.1.0").foregroundColor(.secondary)
-                            }
-                        } header: { sectionHeader("关于") }
+                        categoryForm
                     }
                     .formStyle(.grouped)
                 }
@@ -440,6 +389,279 @@ struct SettingsPanelView: View {
                 .frame(minWidth: 260, idealWidth: 300)
         }
         .onAppear { syncPickers() }
+    }
+
+    // MARK: - Category Form Router
+
+    @ViewBuilder
+    private var categoryForm: some View {
+        switch selectedCategory {
+        case .floatAppearance: floatAppearanceForm
+        case .floatColor: floatColorForm
+        case .floatLayout: floatLayoutForm
+        case .floatAnimation: floatAnimationForm
+        case .floatWidget: floatWidgetForm
+        case .floatBehavior: floatBehaviorForm
+        case .workSize: workSizeForm
+        case .workColor: workColorForm
+        case .mainList: mainListForm
+        case .statusBar: statusBarForm
+        case .aiModel: aiModelForm
+        case .about: aboutForm
+        }
+    }
+
+    // MARK: - Float Appearance
+
+    @ViewBuilder
+    private var floatAppearanceForm: some View {
+        Section {
+            sizeRow("宽度", v: $draft.floatWidth, range: 100...600) { hasChanges = true }
+            sizeRow("高度", v: $draft.floatHeight, range: 36...400) { hasChanges = true }
+            sizeRow("字号", v: $draft.floatFontSize, range: 8...28) { hasChanges = true }
+            sizeRow("副标题字号", v: $draft.floatSubFontSize, range: 6...20) { hasChanges = true }
+            sizeRow("圆角", v: $draft.floatCornerRadius, range: 0...30) { hasChanges = true }
+            sizeDoubleRow("透明度", v: $draft.floatBgOpacity, range: 0.3...1.0, step: 0.05) { hasChanges = true }
+        } header: { sectionHeader("悬浮窗外观") }
+    }
+
+    // MARK: - Float Color
+
+    @ViewBuilder
+    private var floatColorForm: some View {
+        Section {
+            colorRow("背景色", draftHex: $draft.floatBgColorHex, picker: $pBg) { hasChanges = true }
+            colorRow("文字色", draftHex: $draft.floatTextColorHex, picker: $pText) { hasChanges = true }
+            colorRow("强调色", draftHex: $draft.floatAccentColorHex, picker: $pAccent) { hasChanges = true }
+            colorRow("旗标色", draftHex: $draft.floatFlagColorHex, picker: $pFlag) { hasChanges = true }
+            colorRow("日期色", draftHex: $draft.floatDueDateColorHex, picker: $pDueDate) { hasChanges = true }
+        } header: { sectionHeader("悬浮窗颜色") }
+    }
+
+    // MARK: - Float Layout
+
+    @ViewBuilder
+    private var floatLayoutForm: some View {
+        Section {
+            Picker("水平对齐", selection: $draft.floatAlignH) {
+                Text("左").tag("left"); Text("中").tag("center"); Text("右").tag("right")
+            }.pickerStyle(.segmented).onChange(of: draft.floatAlignH) { _, _ in hasChanges = true }
+
+            Picker("垂直对齐", selection: $draft.floatAlignV) {
+                Text("上").tag("top"); Text("中").tag("center"); Text("下").tag("bottom")
+            }.pickerStyle(.segmented).onChange(of: draft.floatAlignV) { _, _ in hasChanges = true }
+
+            sizeRow("水平缩进", v: $draft.floatAlignPaddingH, range: 0...80) { hasChanges = true }
+            sizeRow("垂直偏移", v: $draft.floatAlignPaddingV, range: 0...60) { hasChanges = true }
+        } header: { sectionHeader("布局对齐") }
+
+        Section {
+            FieldSelectorView(title: "标题行", value: $draft.floatLayoutTitleFields,
+                options: ["flag","priority","title"], labels: ["旗标","优先级","标题"])
+                .onChange(of: draft.floatLayoutTitleFields) { _, _ in hasChanges = true }
+            FieldSelectorView(title: "副标题行", value: $draft.floatLayoutSubtitleFields,
+                options: ["listName","dueDate","location","notes","tags"],
+                labels: ["列表","日期","位置","备注","标签"])
+                .onChange(of: draft.floatLayoutSubtitleFields) { _, _ in hasChanges = true }
+            Picker("角标", selection: $draft.floatLayoutBadgeField) {
+                Text("无").tag("none"); Text("优先级").tag("priority"); Text("旗标").tag("flag"); Text("标签").tag("tags")
+            }.onChange(of: draft.floatLayoutBadgeField) { _, _ in hasChanges = true }
+        } header: { sectionHeader("显示字段") }
+    }
+
+    // MARK: - Float Animation
+
+    @ViewBuilder
+    private var floatAnimationForm: some View {
+        Section {
+            Picker("展示模式", selection: $draft.floatScrollMode) {
+                Text("翻页切换").tag("page")
+                Text("连续滚动").tag("continuousScroll")
+            }.pickerStyle(.segmented)
+            .onChange(of: draft.floatScrollMode) { _, _ in hasChanges = true }
+
+            if draft.floatScrollMode == "page" {
+                Picker("切换动画", selection: $draft.floatAnimMode) {
+                    Text("淡入淡出").tag("fade")
+                    Text("水平滑动").tag("horizontalSlide")
+                    Text("垂直滑动").tag("verticalSlide")
+                    Text("翻转").tag("flip")
+                    Text("3D旋转").tag("rotate3D")
+                }.onChange(of: draft.floatAnimMode) { _, _ in hasChanges = true }
+
+                sizeDoubleRow("切换时长", v: $draft.floatAnimDuration, range: 0.1...2.0, step: 0.05) { hasChanges = true }
+
+                Stepper("每页条数: \(draft.floatItemsPerPage)", value: $draft.floatItemsPerPage, in: 1...10)
+                    .onChange(of: draft.floatItemsPerPage) { _, _ in hasChanges = true }
+
+                sizeDoubleRow("切换间隔", v: $draft.floatScrollInterval, range: 1...30, step: 0.5) { hasChanges = true }
+            } else {
+                sizeRow("滚动速度(px/s)", v: $draft.floatAnimSpeed, range: 5...200) { hasChanges = true }
+            }
+        } header: { sectionHeader("展示与动画") }
+    }
+
+    // MARK: - Float Widget
+
+    @ViewBuilder
+    private var floatWidgetForm: some View {
+        Section {
+            Toggle("启用插件", isOn: $draft.floatWidgetEnabled)
+                .onChange(of: draft.floatWidgetEnabled) { _, _ in hasChanges = true }
+            if draft.floatWidgetEnabled {
+                Picker("位置", selection: $draft.floatWidgetPosition) {
+                    Text("左上").tag("topLeft"); Text("右上").tag("topRight")
+                    Text("左下").tag("bottomLeft"); Text("右下").tag("bottomRight")
+                }.onChange(of: draft.floatWidgetPosition) { _, _ in hasChanges = true }
+                Picker("内容", selection: $draft.floatWidgetContent) {
+                    Text("剩余待办数").tag("remaining"); Text("当前时间").tag("time"); Text("日期").tag("date")
+                }.onChange(of: draft.floatWidgetContent) { _, _ in hasChanges = true }
+                sizeRow("字号", v: $draft.floatWidgetFontSize, range: 7...18) { hasChanges = true }
+                sizeDoubleRow("透明度", v: $draft.floatWidgetOpacity, range: 0.2...1.0, step: 0.05) { hasChanges = true }
+                colorRow("颜色", draftHex: $draft.floatWidgetColorHex, picker: $pWidget) { hasChanges = true }
+            }
+        } header: { sectionHeader("插件 Widget") }
+    }
+
+    // MARK: - Float Behavior
+
+    @ViewBuilder
+    private var floatBehaviorForm: some View {
+        Section {
+            Toggle("悬停暂停轮播", isOn: $draft.floatPauseOnHover).onChange(of: draft.floatPauseOnHover) { _, _ in hasChanges = true }
+            Toggle("允许拖拽调大小", isOn: $draft.floatResizable).onChange(of: draft.floatResizable) { _, _ in hasChanges = true }
+            Toggle("显示 AI 输入", isOn: $draft.floatShowInput).onChange(of: draft.floatShowInput) { _, _ in hasChanges = true }
+            Toggle("允许完成操作", isOn: $draft.floatAllowComplete).onChange(of: draft.floatAllowComplete) { _, _ in hasChanges = true }
+            Picker("默认筛选", selection: $draft.floatFilterMode) {
+                Text("全部").tag("all"); Text("仅旗标").tag("flagged"); Text("指定列表").tag("lists")
+            }.onChange(of: draft.floatFilterMode) { _, _ in hasChanges = true }
+        } header: { sectionHeader("行为") }
+    }
+
+    // MARK: - Work Size
+
+    @ViewBuilder
+    private var workSizeForm: some View {
+        Section {
+            sizeRow("宽度", v: $draft.workWidth, range: 200...600) { hasChanges = true }
+            sizeRow("高度", v: $draft.workHeight, range: 200...800) { hasChanges = true }
+            sizeRow("字号", v: $draft.workFontSize, range: 10...24) { hasChanges = true }
+            sizeRow("副标题字号", v: $draft.workSubFontSize, range: 7...18) { hasChanges = true }
+            sizeRow("圆角", v: $draft.workCornerRadius, range: 0...30) { hasChanges = true }
+            sizeDoubleRow("透明度", v: $draft.workBgOpacity, range: 0.3...1.0, step: 0.05) { hasChanges = true }
+            sizeRow("行高", v: $draft.workRowHeight, range: 28...80) { hasChanges = true }
+            sizeRow("行距", v: $draft.workRowSpacing, range: 0...16) { hasChanges = true }
+            sizeRow("标题字号", v: $draft.workHeaderFontSize, range: 10...22) { hasChanges = true }
+            TextField("顶栏文字", text: $draft.workHeaderText)
+                .font(.caption).textFieldStyle(.roundedBorder)
+                .onChange(of: draft.workHeaderText) { _, _ in hasChanges = true }
+            Toggle("显示序号", isOn: $draft.workShowIndex).onChange(of: draft.workShowIndex) { _, _ in hasChanges = true }
+            Toggle("显示副标题", isOn: $draft.workShowSubtitle).onChange(of: draft.workShowSubtitle) { _, _ in hasChanges = true }
+            Toggle("允许拖拽调大小", isOn: $draft.workResizable).onChange(of: draft.workResizable) { _, _ in hasChanges = true }
+        } header: { sectionHeader("工作模式 — 尺寸") }
+    }
+
+    // MARK: - Work Color
+
+    @ViewBuilder
+    private var workColorForm: some View {
+        Section {
+            colorRow("背景色", draftHex: $draft.workBgColorHex, picker: $pWorkBg) { hasChanges = true }
+            colorRow("文字色", draftHex: $draft.workTextColorHex, picker: $pWorkText) { hasChanges = true }
+            colorRow("强调色", draftHex: $draft.workAccentColorHex, picker: $pWorkAccent) { hasChanges = true }
+            colorRow("当前背景", draftHex: $draft.workCurrentBgColorHex, picker: $pWorkCurBg) { hasChanges = true }
+            colorRow("当前文字", draftHex: $draft.workCurrentTextColorHex, picker: $pWorkCurText) { hasChanges = true }
+            colorRow("已完成背景", draftHex: $draft.workDoneBgColorHex, picker: $pWorkDoneBg) { hasChanges = true }
+            colorRow("已完成文字", draftHex: $draft.workDoneTextColorHex, picker: $pWorkDoneText) { hasChanges = true }
+            colorRow("待完成背景", draftHex: $draft.workPendingBgColorHex, picker: $pWorkPendBg) { hasChanges = true }
+        } header: { sectionHeader("工作模式 — 颜色") }
+    }
+
+    // MARK: - Main List
+
+    @ViewBuilder
+    private var mainListForm: some View {
+        Section {
+            sizeRow("字号", v: $draft.listFontSize, range: 10...18) { hasChanges = true }
+            Toggle("显示备注", isOn: $draft.showNotes).onChange(of: draft.showNotes) { _, _ in hasChanges = true }
+            Toggle("显示位置", isOn: $draft.showLocation).onChange(of: draft.showLocation) { _, _ in hasChanges = true }
+            Toggle("显示日期", isOn: $draft.showDueDate).onChange(of: draft.showDueDate) { _, _ in hasChanges = true }
+            Toggle("显示列表名", isOn: $draft.showListName).onChange(of: draft.showListName) { _, _ in hasChanges = true }
+        } header: { sectionHeader("主列表") }
+    }
+
+    // MARK: - Status Bar
+
+    @ViewBuilder
+    private var statusBarForm: some View {
+        Section {
+            Picker("图标", selection: $draft.statusBarIconName) {
+                Text("checklist").tag("checklist")
+                Text("checkmark.circle").tag("checkmark.circle")
+                Text("list.bullet").tag("list.bullet")
+                Text("square.grid.2x2").tag("square.grid.2x2")
+                Text("bell.badge").tag("bell.badge")
+            }.onChange(of: draft.statusBarIconName) { _, _ in hasChanges = true }
+        } header: { sectionHeader("状态栏") }
+    }
+
+    // MARK: - AI Model
+
+    @ViewBuilder
+    private var aiModelForm: some View {
+        Section {
+            Toggle("多任务模式", isOn: $draft.aiMultiMode).onChange(of: draft.aiMultiMode) { _, _ in hasChanges = true }
+        } header: { sectionHeader("AI 模型") }
+
+        Section {
+            ForEach(llmService.providers, id: \.id) { p in
+                HStack {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(p.name).font(.system(size: 12, weight: .medium))
+                        Text(p.modelName).font(.system(size: 10)).foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    if p.id == llmService.currentProvider.id {
+                        Image(systemName: "checkmark.circle.fill").foregroundColor(.green).font(.caption)
+                    }
+                    Button("编辑") { editingProvider = p; showProviderEditor = true }
+                        .font(.system(size: 10)).buttonStyle(.plain)
+                    Button("删除") { llmService.removeProvider(p) }
+                        .font(.system(size: 10)).buttonStyle(.plain).foregroundColor(.red)
+                }.padding(.vertical, 1)
+            }
+            HStack {
+                Button(action: {
+                    editingProvider = LLMProviderConfig(id: UUID(), name: "", baseURL: "https://api.openai.com/v1/chat/completions", modelName: "gpt-4o-mini", apiKey: "")
+                    showProviderEditor = true
+                }) { Label("添加", systemImage: "plus").font(.caption) }.buttonStyle(.plain)
+                Spacer()
+                if llmService.isProcessing { ProgressView().scaleEffect(0.6) }
+                Button("测试连接") { Task { do { _ = try await llmService.parseNaturalLanguage("test") } catch {} } }
+                    .font(.caption).buttonStyle(.bordered).controlSize(.small)
+            }
+        } header: { sectionHeader("API 供应商") }
+        .sheet(isPresented: $showProviderEditor) {
+            if let p = editingProvider {
+                ProviderEditSheet(provider: p) { u in
+                    if llmService.providers.contains(where: { $0.id == u.id }) { llmService.updateProvider(u) }
+                    else { llmService.addProvider(u) }
+                }
+            }
+        }
+    }
+
+    // MARK: - About
+
+    @ViewBuilder
+    private var aboutForm: some View {
+        Section {
+            HStack {
+                Text("SmartRemind").font(.headline)
+                Spacer()
+                Text("v1.1.0").foregroundColor(.secondary)
+            }
+        } header: { sectionHeader("关于") }
     }
 
     // MARK: - Live Preview
@@ -459,18 +681,27 @@ struct SettingsPanelView: View {
             .padding(.horizontal, 10).padding(.top, 10)
 
             Spacer()
-            previewWindow
-                .padding(12)
+
+            if selectedCategory.isFloatCategory {
+                floatPreviewWindow.padding(12)
+            } else if selectedCategory.isWorkCategory {
+                workModePreview.padding(12)
+            } else {
+                generalPreview.padding(12)
+            }
+
             Spacer()
 
-            Text("拖拽调整宽高 → 展开设置可编辑一切细节")
+            Text("预览会跟随设置变化实时更新")
                 .font(.caption2).foregroundColor(.secondary)
                 .padding(.bottom, 10)
         }
         .background(Color(nsColor: .controlBackgroundColor))
     }
 
-    private var previewWindow: some View {
+    // MARK: Float Preview Window
+
+    private var floatPreviewWindow: some View {
         let draftConfig = PreviewConfig(from: draft)
         return ZStack {
             RoundedRectangle(cornerRadius: draftConfig.cornerRadius)
@@ -548,6 +779,102 @@ struct SettingsPanelView: View {
                height: draft.floatHeight > 0 ? draft.floatHeight : 64)
     }
 
+    // MARK: Work Mode Preview
+
+    private var workModePreview: some View {
+        let bgColor = config.color(from: draft.workBgColorHex)
+        let textColor = config.color(from: draft.workTextColorHex)
+        let accentColor = config.color(from: draft.workAccentColorHex)
+        let curBg = config.color(from: draft.workCurrentBgColorHex)
+        let curText = config.color(from: draft.workCurrentTextColorHex)
+        let doneBg = config.color(from: draft.workDoneBgColorHex)
+        let doneText = config.color(from: draft.workDoneTextColorHex)
+        let pendBg = config.color(from: draft.workPendingBgColorHex)
+
+        let sampleTasks: [(String, String)] = [
+            ("完成报告", "done"),
+            ("发送邮件", "current"),
+            ("准备会议", "pending"),
+            ("更新文档", "pending"),
+        ]
+
+        return VStack(spacing: 0) {
+            // Header
+            HStack {
+                Text(draft.workHeaderText)
+                    .font(.system(size: draft.workHeaderFontSize, weight: .bold))
+                    .foregroundColor(accentColor)
+                Spacer()
+                Text("2/4").font(.system(size: draft.workSubFontSize)).foregroundColor(textColor.opacity(0.6))
+            }
+            .padding(.horizontal, 10).padding(.vertical, 8)
+
+            Divider().background(textColor.opacity(0.2))
+
+            // Task rows
+            VStack(spacing: draft.workRowSpacing) {
+                ForEach(Array(sampleTasks.enumerated()), id: \.offset) { idx, task in
+                    let (title, state) = task
+                    let rowBg = state == "done" ? doneBg : (state == "current" ? curBg : pendBg)
+                    let rowText = state == "done" ? doneText : (state == "current" ? curText : textColor)
+
+                    HStack(spacing: 6) {
+                        if draft.workShowIndex {
+                            Text("\(idx + 1)")
+                                .font(.system(size: draft.workSubFontSize, design: .monospaced))
+                                .foregroundColor(rowText.opacity(0.5))
+                                .frame(width: 18)
+                        }
+                        Image(systemName: state == "done" ? "checkmark.circle.fill" : (state == "current" ? "circle.inset.filled" : "circle"))
+                            .font(.system(size: draft.workFontSize * 0.85))
+                            .foregroundColor(state == "done" ? .green.opacity(0.7) : (state == "current" ? accentColor : rowText.opacity(0.4)))
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(title)
+                                .font(.system(size: draft.workFontSize, weight: state == "current" ? .semibold : .regular))
+                                .foregroundColor(rowText)
+                                .strikethrough(state == "done")
+                            if draft.workShowSubtitle {
+                                Text("工作 · 今天 14:00")
+                                    .font(.system(size: draft.workSubFontSize))
+                                    .foregroundColor(rowText.opacity(0.5))
+                            }
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .frame(height: draft.workRowHeight)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(rowBg))
+                }
+            }
+            .padding(8)
+
+            Spacer(minLength: 0)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: draft.workCornerRadius)
+                .fill(bgColor.opacity(draft.workBgOpacity))
+        )
+        .clipShape(RoundedRectangle(cornerRadius: draft.workCornerRadius))
+        .shadow(radius: 4)
+        .frame(width: min(draft.workWidth, 280), height: min(draft.workHeight, 360))
+    }
+
+    // MARK: General Preview (non-float, non-work categories)
+
+    private var generalPreview: some View {
+        VStack(spacing: 16) {
+            Image(systemName: selectedCategory.icon)
+                .font(.system(size: 40))
+                .foregroundColor(.accentColor)
+            Text(selectedCategory.rawValue)
+                .font(.title3).foregroundColor(.secondary)
+            Text("更改此类别的设置后，将在对应界面中生效。")
+                .font(.caption).foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     // MARK: - Draft Actions
 
     private func applyDraft() {
@@ -574,6 +901,15 @@ struct SettingsPanelView: View {
         pFlag = config.color(from: draft.floatFlagColorHex)
         pDueDate = config.color(from: draft.floatDueDateColorHex)
         pWidget = config.color(from: draft.floatWidgetColorHex)
+        // Work mode
+        pWorkBg = config.color(from: draft.workBgColorHex)
+        pWorkText = config.color(from: draft.workTextColorHex)
+        pWorkAccent = config.color(from: draft.workAccentColorHex)
+        pWorkCurBg = config.color(from: draft.workCurrentBgColorHex)
+        pWorkCurText = config.color(from: draft.workCurrentTextColorHex)
+        pWorkDoneBg = config.color(from: draft.workDoneBgColorHex)
+        pWorkDoneText = config.color(from: draft.workDoneTextColorHex)
+        pWorkPendBg = config.color(from: draft.workPendingBgColorHex)
     }
 
     // MARK: - Helper Views

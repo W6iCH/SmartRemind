@@ -6,6 +6,7 @@ import SwiftUI
     private var statusItem: NSStatusItem!
     private var menuPanel: NSPanel?
     private var floatingPanel: FloatingPanel?
+    private var workModePanel: WorkModePanel?
     private var mainWindow: NSWindow?
     private var clickMonitor: Any?
 
@@ -111,6 +112,7 @@ import SwiftUI
         let menu = NSMenu()
         menu.addItem(withTitle: "主界面", action: #selector(openMainWindow), keyEquivalent: "")
         menu.addItem(withTitle: "悬浮窗", action: #selector(handleToggleFloatingPanel), keyEquivalent: "")
+        menu.addItem(withTitle: "工作模式", action: #selector(handleToggleWorkMode), keyEquivalent: "")
         menu.addItem(NSMenuItem.separator())
         menu.addItem(withTitle: "退出", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         statusItem.menu = menu
@@ -159,6 +161,18 @@ import SwiftUI
         floatingPanel?.makeKeyAndOrderFront(nil)
     }
 
+    // MARK: - Work Mode Panel
+
+    @objc func handleToggleWorkMode() {
+        if let panel = workModePanel, panel.isVisible {
+            panel.orderOut(nil)
+        } else {
+            if workModePanel == nil { workModePanel = WorkModePanel() }
+            workModePanel?.refreshContentView()
+            workModePanel?.makeKeyAndOrderFront(nil)
+        }
+    }
+
     // MARK: - Hotkey ⌥⇧R
 
     private func setupGlobalHotkey() {
@@ -180,6 +194,7 @@ import SwiftUI
 
     private func setupNotificationObserver() {
         NotificationCenter.default.addObserver(self, selector: #selector(handleToggleFloatingPanel), name: .toggleFloatingPanel, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(handleToggleWorkMode), name: .toggleWorkMode, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(handleRemindersChanged), name: .remindersChanged, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(openMainWindow), name: .openMainWindow, object: nil)
     }

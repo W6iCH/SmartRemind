@@ -138,6 +138,21 @@ final class LLMService: ObservableObject {
         return try parseMultiResponse(data: data)
     }
 
+    // MARK: - Input Pre-processing
+
+    /// 将编号列表（1、2、3）改写为 "1||" 分隔符，帮助 LLM 拆分
+    private func preprocessInput(_ raw: String) -> String {
+        var processed = raw
+        if let regex = try? NSRegularExpression(
+            pattern: #"(?:^|\n)\s*(\d+)[、，,.)）]\s*"#, options: []) {
+            let range = NSRange(processed.startIndex..., in: processed)
+            processed = regex.stringByReplacingMatches(
+                in: processed, options: [], range: range,
+                withTemplate: "$1||")
+        }
+        return processed
+    }
+
     // MARK: - Build Request
 
     private func buildRequestBody(userInput: String, multiMode: Bool, existingLists: [String]) -> [String: Any] {
@@ -165,11 +180,19 @@ final class LLMService: ObservableObject {
         let modeInstruction: String
         if multiMode {
             modeInstruction = """
-            【多任务模式开关已打开】
-            用户的输入可能包含零个、一个或多个提醒事项。
-            请仔细分析输入内容，根据实际描述的任务数量，智能拆分为对应数量的提醒事项（1条到多条）。
-            例如：「明天交报告，后天开会，顺便买菜」→ 输出 3 条提醒。
-            如果未识别到明确的任务，输出 1 条使用输入全文作为 title 的提醒。
+            【多任务模式开关已打开 — 必须拆分！】
+
+            ⚠️ 编号列表：输入中 "||" 是任务分隔符，每个分隔符后是一项独立任务。
+            输入包含多少个 "||"，就至少要输出多少条提醒！
+
+            示例 — 输入：「1||问卷设计 2||模型制作 3||服务器搭建」
+            → 输出 3 条提醒，不要合并！
+
+            示例 — 自然语言：「明天交报告，后天开会，顺便买菜」
+            → 输出 3 条提醒
+
+            仅当输入是单一短句（如「买牛奶」）且没有任何分隔时才输出 1 条。
+            其他情况必须拆成多条。
 
             输出格式（纯 JSON，不要 markdown 代码块）：
             {
@@ -224,9 +247,9 @@ final class LLMService: ObservableObject {
             "model": currentProvider.modelName,
             "messages": [
                 ["role": "system", "content": systemPrompt],
-                ["role": "user", "content": userInput]
+                ["role": "user", "content": multiMode ? preprocessInput(userInput) : userInput]
             ],
-            "temperature": 0.1,
+            "temperature": multiMode ? 0.3 : 0.1,
             "max_tokens": maxTokens,
             "response_format": ["type": "json_object"]
         ]

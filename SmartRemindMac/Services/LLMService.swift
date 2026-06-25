@@ -111,6 +111,7 @@ final class LLMService: ObservableObject {
 
     // MARK: - Parse (Multi)
 
+    /// 多任务模式：先本地拆分编号列表，再逐个调用 LLM 解析
     func parseMultipleReminders(_ text: String) async throws -> [ParsedReminder] {
         guard !currentProvider.apiKey.isEmpty else { throw LLMError.noApiKey }
         guard let url = URL(string: currentProvider.baseURL) else { throw LLMError.invalidURL }
@@ -119,38 +120,84 @@ final class LLMService: ObservableObject {
         defer { isProcessing = false }
 
         let existingLists = ReminderManager.shared.lists.map { $0.title }
-        let requestBody = buildRequestBody(userInput: text, multiMode: true, existingLists: existingLists)
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.addValue("Bearer \(currentProvider.apiKey)", forHTTPHeaderField: "Authorization")
-        request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
-        request.timeoutInterval = 45
+        // Step 1: 本地拆分编号列表
+        let taskItems = splitNumberedTasks(text)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        // Step 2: 逐个调用 LLM 解析（每个任务走单任务模式单次调用）
+        var results: [ParsedReminder] = []
+        for taskText in taskItems {
+            let requestBody = buildRequestBody(userInput: taskText, multiMode: false, existingLists: existingLists)
 
-        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            let body = String(data: data, encoding: .utf8) ?? "Unknown"
-            throw LLMError.apiError(statusCode: http.statusCode, message: body)
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.addValue("Bearer \(currentProvider.apiKey)", forHTTPHeaderField: "Authorization")
+            request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+            request.timeoutInterval = 30
+
+            let (data, response) = try await URLSession.shared.data(for: request)
+
+            if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                let body = String(data: data, encoding: .utf8) ?? "Unknown"
+                throw LLMError.apiError(statusCode: http.statusCode, message: body)
+            }
+
+            let parsed = try parseSingleResponse(data: data)
+            results.append(parsed)
         }
 
-        return try parseMultiResponse(data: data)
+        return results
     }
 
-    // MARK: - Input Pre-processing
 
-    /// 将编号列表（1、2、3）改写为 "1||" 分隔符，帮助 LLM 拆分
-    private func preprocessInput(_ raw: String) -> String {
-        var processed = raw
-        if let regex = try? NSRegularExpression(
-            pattern: #"(?:^|\n)\s*(\d+)[、，,.)）]\s*"#, options: []) {
-            let range = NSRange(processed.startIndex..., in: processed)
-            processed = regex.stringByReplacingMatches(
-                in: processed, options: [], range: range,
-                withTemplate: "$1||")
+    // MARK: - Client-Side Numbered List Splitter
+
+    /// 将编号列表拆分为独立任务文本数组
+    /// 例如："1、xxx；2、yyy" -> ["xxx", "yyy"]
+    /// 自动提取前缀（如"下周前完成："）作为第一条任务的截止时间等上下文
+    private func splitNumberedTasks(_ text: String) -> [String] {
+        // 必须用普通字符串：\\\\d 在 Swift 字符串中变成 \\d，传给 NSRegularExpression 即 \\d（匹配数字）
+        let pattern = "\\d+[、.)）]\\s*"
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+            return [text]
         }
-        return processed
+
+        let nsRange = NSRange(text.startIndex..., in: text)
+        let matchResults = regex.matches(in: text, options: [], range: nsRange)
+
+        // >=2 个匹配项说明是编号列表
+        guard matchResults.count >= 2 else { return [text] }
+
+        // 提取前置上下文
+        var prefix = ""
+        let firstMatchStart = matchResults[0].range.location
+        if firstMatchStart > 0 {
+            if let pr = Range(NSRange(location: 0, length: firstMatchStart), in: text) {
+                prefix = String(text[pr]).trimmingCharacters(in: CharacterSet(charactersIn: "：:\n\r "))
+            }
+        }
+
+        var tasks: [String] = []
+        for i in 0 ..< matchResults.count {
+            let contentStart = matchResults[i].range.location + matchResults[i].range.length
+            let nextStart = (i + 1 < matchResults.count) ? matchResults[i + 1].range.location : text.count
+
+            guard contentStart < nextStart else { continue }
+            guard let cr = Range(NSRange(location: contentStart, length: nextStart - contentStart), in: text) else { continue }
+
+            var taskText = String(text[cr])
+            taskText = taskText.trimmingCharacters(in: CharacterSet(charactersIn: "；;、,\n\r "))
+
+            if !taskText.isEmpty {
+                if i == 0 && !prefix.isEmpty {
+                    taskText = prefix + " " + taskText
+                }
+                tasks.append(taskText)
+            }
+        }
+
+        return tasks.isEmpty ? [text] : tasks
     }
 
     // MARK: - Build Request
@@ -247,9 +294,9 @@ final class LLMService: ObservableObject {
             "model": currentProvider.modelName,
             "messages": [
                 ["role": "system", "content": systemPrompt],
-                ["role": "user", "content": multiMode ? preprocessInput(userInput) : userInput]
+                ["role": "user", "content": userInput]
             ],
-            "temperature": multiMode ? 0.3 : 0.1,
+            "temperature": 0.1,
             "max_tokens": maxTokens,
             "response_format": ["type": "json_object"]
         ]

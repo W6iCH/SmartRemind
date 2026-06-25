@@ -1,0 +1,48 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build macOS App
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build via SwiftPM
+        run: swift build -c release --product SmartRemindMac
+
+      - name: Package .app Bundle with Codesigning
+        run: |
+          APP_NAME="SmartRemind"
+          BUNDLE="release/${APP_NAME}.app"
+          mkdir -p "${BUNDLE}/Contents/MacOS"
+          mkdir -p "${BUNDLE}/Contents/Resources"
+
+          # Copy binary
+          cp ".build/release/SmartRemindMac" "${BUNDLE}/Contents/MacOS/${APP_NAME}"
+
+          # Copy Info.plist
+          cp SmartRemindMac/Resources/Info.plist "${BUNDLE}/Contents/"
+
+          # Copy entitlements (informational)
+          cp SmartRemindMac/Resources/SmartRemindMac.entitlements "${BUNDLE}/Contents/Resources/"
+
+          # Update Info.plist: set executable name
+          plutil -replace CFBundleExecutable -string "${APP_NAME}" "${BUNDLE}/Contents/Info.plist"
+
+          # Ad-hoc code sign (required for macOS 15+)
+          codesign --force --deep --sign - "${BUNDLE}"
+
+          cd release
+          zip -ry "${APP_NAME}.zip" "${APP_NAME}.app"
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/SmartRemind.zip
+          generate_release_notes: true

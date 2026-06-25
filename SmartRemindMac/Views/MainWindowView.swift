@@ -339,6 +339,7 @@ struct SettingsPanelView: View {
     // Draft
     @State private var draft: SettingsDraft
     @State private var hasChanges = false
+    // 🐛 FIX: Move these to top-level @State so the .sheet can bind to them from HSplitView
     @State private var showProviderEditor = false
     @State private var editingProvider: LLMProviderConfig?
 
@@ -387,6 +388,23 @@ struct SettingsPanelView: View {
             // Right: Live Preview
             livePreview
                 .frame(minWidth: 260, idealWidth: 300)
+        }
+        // 🐛 FIX: Move .sheet out of aiModelForm (inside Form/Section/TupleView)
+        // to the top-level HSplitView so it presents reliably on macOS
+        .sheet(isPresented: $showProviderEditor) {
+            // Capture editingProvider value at sheet-open time
+            let captured = editingProvider ?? LLMProviderConfig(
+                id: UUID(), name: "",
+                baseURL: "https://api.openai.com/v1/chat/completions",
+                modelName: "gpt-4o-mini", apiKey: ""
+            )
+            return ProviderEditSheet(provider: captured) { u in
+                if llmService.providers.contains(where: { $0.id == u.id }) {
+                    llmService.updateProvider(u)
+                } else {
+                    llmService.addProvider(u)
+                }
+            }
         }
         .onAppear { syncPickers() }
     }
@@ -641,14 +659,6 @@ struct SettingsPanelView: View {
                     .font(.caption).buttonStyle(.bordered).controlSize(.small)
             }
         } header: { sectionHeader("API 供应商") }
-        .sheet(isPresented: $showProviderEditor) {
-            if let p = editingProvider {
-                ProviderEditSheet(provider: p) { u in
-                    if llmService.providers.contains(where: { $0.id == u.id }) { llmService.updateProvider(u) }
-                    else { llmService.addProvider(u) }
-                }
-            }
-        }
     }
 
     // MARK: - About

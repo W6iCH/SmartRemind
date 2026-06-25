@@ -203,8 +203,11 @@ struct MainWindowView: View {
                 TextField("AI 自然语言添加...", text: $aiInputText)
                     .textFieldStyle(.roundedBorder).controlSize(.small)
                     .onSubmit { submitAI() }
-                Toggle(config.aiMultiMode ? "多" : "单", isOn: $config.aiMultiMode)
+                Toggle(config.aiMultiMode ? "多任务" : "单任务", isOn: $config.aiMultiMode)
                     .toggleStyle(.button).controlSize(.small)
+                    .help(config.aiMultiMode
+                          ? "多任务模式：自动拆分为多项提醒"
+                          : "单任务模式：始终只添加一条提醒")
                 Button("添加") { submitAI() }
                     .buttonStyle(.borderedProminent).controlSize(.small)
                     .disabled(aiInputText.trimmingCharacters(in: .whitespaces).isEmpty)
@@ -629,6 +632,8 @@ struct SettingsPanelView: View {
     private var aiModelForm: some View {
         Section {
             Toggle("多任务模式", isOn: $draft.aiMultiMode).onChange(of: draft.aiMultiMode) { _, _ in hasChanges = true }
+            Text("开启后，AI 会根据输入内容自动拆分为 1~N 条提醒事项；关闭后始终只添加一条。")
+                .font(.caption2).foregroundColor(.secondary)
         } header: { sectionHeader("AI 模型") }
 
         Section {

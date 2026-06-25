@@ -144,34 +144,53 @@ final class LLMService: ObservableObject {
         let listsStr = existingLists.isEmpty ? "（无现有分组）" : existingLists.joined(separator: "、")
         let now = ISO8601DateFormatter().string(from: Date())
 
-        let singleSchema = """
+        let itemSchema = """
         {
-            "title": "提醒事项标题",
-            "listName": "分组名（从现有分组选择，找不到合适的则为 null）",
+            "title": "提醒事项标题（必填）",
+            "listName": "分组名（从现有分组中选择最匹配的，找不到则为 null）",
             "dueDate": "ISO8601 截止时间或 null",
             "location": "地点或 null",
             "notes": "备注或 null",
-            "flagged": true/false 或 null（是否标记旗标）,
-            "priority": 0/1/5/9 或 null（0无/1高/5中/9低）,
+            "flagged": true 或 false（根据语气推断，紧急/重要的事项设为 true）,
+            "priority": 0/1/5/9（1=高优先级，5=中优先级，9=低优先级，0或null=普通）,
             "tags": ["标签1", "标签2"] 或 null,
-            "reminderDate": "ISO8601 提醒时间或 null（不同于截止时间）",
-            "recurrenceRule": "重复规则自然语言描述或 null（如\"每天\"、\"每周一\"）",
+            "reminderDate": "ISO8601 提醒时间或 null",
+            "recurrenceRule": "重复规则（如每天、每周一）或 null",
             "url": "相关链接或 null"
         }
         """
 
-        let multiSchema = """
-        {
-            "items": [
-                { 同上单个 schema },
-                ...
-            ]
-        }
-        """
+        let maxTokens = multiMode ? 2000 : 1000
 
-        let modeInstruction = multiMode
-            ? "用户输入可能包含多个任务。请将其拆分为独立的提醒事项，输出 JSON 包含 items 数组。\n输出 Schema:\n\(multiSchema)"
-            : "从用户输入中提取一个最重要的提醒事项。\n输出 Schema:\n\(singleSchema)"
+        let modeInstruction: String
+        if multiMode {
+            modeInstruction = """
+            【多任务模式开关已打开】
+            用户的输入可能包含零个、一个或多个提醒事项。
+            请仔细分析输入内容，根据实际描述的任务数量，智能拆分为对应数量的提醒事项（1条到多条）。
+            例如：「明天交报告，后天开会，顺便买菜」→ 输出 3 条提醒。
+            如果未识别到明确的任务，输出 1 条使用输入全文作为 title 的提醒。
+
+            输出格式（纯 JSON，不要 markdown 代码块）：
+            {
+                "items": [
+                    { ... 单个提醒事项 ... },
+                    ...
+                ]
+            }
+            """
+        } else {
+            modeInstruction = """
+            【单任务模式 — 严格只输出一条】
+            ⚠️ 重要：无论用户输入多长、包含多少个任务，你都必须只输出 一个 提醒事项（单个 JSON 对象）。
+            永远不要使用 items 数组格式。
+            如果输入包含多个任务，请选择最主要或最紧急的那一个，忽略其他。
+            如果无法识别出任何任务，用输入全文作为 title。
+
+            输出格式（纯 JSON，不要 markdown 代码块）：
+            直接输出单个对象 { 如上 schema }，不要包裹在 items 数组中。
+            """
+        }
 
         let systemPrompt = """
         你是一个智能提醒事项解析助手。
@@ -179,16 +198,24 @@ final class LLMService: ObservableObject {
         现有分组列表：\(listsStr)
         当前时间：\(now)
 
-        规则：
-        1. title 必须有值，简洁清晰。
-        2. listName 必须从现有分组中选择最合适的。如果没有合适的分组，设为 null（不要创建新分组名）。
-        3. 时间词（如「明天」「下周一」「后天3点」）需转换为 ISO8601。
-        4. 只有用户明确提到的字段才设置，未提及的设为 null。
-        5. flagged 只有用户说「标记」「旗标」「重要」等才设为 true。
-        6. priority 只有用户说「高优先级」「紧急」等才设。
-        7. tags 只有用户明确提到标签时才设。
-        8. recurrenceRule 只有用户说「每天」「每周」等才设。
-        9. 严格输出纯 JSON，不要 markdown 代码块。
+        === 解析规则 ===
+
+        1. title（必填）：必须简洁清晰，从用户输入中提取最重要的任务描述。
+        2. listName：从现有分组中选择最匹配的。找不到合适的分组则设为 null（不要编造新分组名）。
+        3. 时间解析：所有时间词（如「明天」「后天下午3点」「下周一早上」「今晚」「大后天」）需基于当前时间转换为 ISO8601 格式。
+        4. flagged（旗标）：根据语气和内容自动推断！不要仅靠关键词。
+           — 紧急语气、感叹号结尾、「紧急」「立刻」「马上」「重要」「必须」「加急」「务必」→ true
+           — 普通待办事项 → false
+           — 不要设为 null，必须有 true 或 false
+        5. priority（优先级）：根据语气和紧急程度自动推断！
+           — 非常紧急：「立刻」「立即」「紧急」「加急」「今天必须」→ 1（高优先级）
+           — 中等紧急：「尽快」「尽量」「希望」「最好」「这周内」→ 5（中优先级）
+           — 轻松备忘：「有空」「随便」「回头再说」→ 9（低优先级）
+           — 普通任务 → 0 或 null
+        6. tags：从输入中提取提到的类别、项目名或主题作为标签，没有则为 null。
+        7. recurrenceRule：只有用户明确说「每天」「每周」「每月」「工作日」等才设置，否则为 null。
+        8. notes：提取额外的说明文字，没有则为 null。
+        9. 严格输出纯 JSON，不要 markdown 代码块，不要额外文字。
 
         \(modeInstruction)
         """
@@ -200,7 +227,7 @@ final class LLMService: ObservableObject {
                 ["role": "user", "content": userInput]
             ],
             "temperature": 0.1,
-            "max_tokens": 1000,
+            "max_tokens": maxTokens,
             "response_format": ["type": "json_object"]
         ]
     }
